@@ -23,7 +23,7 @@
 #import "Snowplow.h"
 #import "SPEventStore.h"
 #import "SPPayload.h"
-#import "SPUtils.h"
+#import "SPUtilities.h"
 #import <FMDB/FMDB.h>
 
 @implementation SPEventStore {
@@ -40,8 +40,15 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
 
 - (id) init {
     self = [super init];
-    NSString *libraryPath = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+    NSString *libraryPath = nil;
+    
+#if SNOWPLOW_TARGET_TV
+    libraryPath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+#else
+    libraryPath = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+#endif
     _dbPath = [libraryPath stringByAppendingPathComponent:@"snowplowEvents.sqlite"];
+    
     if (self){
         _queue = [FMDatabaseQueue databaseQueueWithPath:_dbPath];
         [self createTable];
@@ -64,14 +71,14 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
 }
 
 - (long long int) insertEvent:(SPPayload *)payload {
-    return [self insertDictionaryData:[payload getPayloadAsDictionary]];
+    return [self insertDictionaryData:[payload getAsDictionary]];
 }
 
 - (long long int) insertDictionaryData:(NSDictionary *)dict {
     __block long long int res = -1;
     [_queue inDatabase:^(FMDatabase *db) {
         if ([db open]) {
-            NSData *data = [NSJSONSerialization dataWithJSONObject:[self getCleanDictionary:dict] options:0 error:nil];
+            NSData *data = [NSJSONSerialization dataWithJSONObject:dict options:0 error:nil];
             [db executeUpdate:_queryInsertEvent, data];
             res = (long long int) [db lastInsertRowId];
         }
@@ -79,21 +86,11 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
     return res;
 }
 
-- (NSDictionary *) getCleanDictionary:(NSDictionary *)dict {
-    NSMutableDictionary *cleanDictionary = [NSMutableDictionary dictionary];
-    for (NSString * key in [dict allKeys]) {
-        if (![[dict objectForKey:key] isKindOfClass:[NSNull class]]) {
-            [cleanDictionary setObject:[dict objectForKey:key] forKey:key];
-        }
-    }
-    return cleanDictionary;
-}
-
 - (BOOL) removeEventWithId:(long long int)id_ {
     __block BOOL res = false;
     [_queue inDatabase:^(FMDatabase *db) {
         if ([db open]) {
-            SnowplowDLog(@"Removing %lld from database now.", id_);
+            SnowplowDLog(@"SPLog: Removing %@ from database now.", [@(id_) stringValue]);
             res = [db executeUpdate:_queryDeleteId, [NSNumber numberWithLongLong:id_]];
         }
     }];
@@ -132,7 +129,7 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
             FMResultSet *s = [db executeQuery:_querySelectId, [NSNumber numberWithLongLong:id_]];
             while ([s next]) {
                 NSData * data = [s dataForColumn:@"eventData"];
-                SnowplowDLog(@"Item: %d %@ %@",
+                SnowplowDLog(@"SPLog: Item: %d %@ %@",
                      [s intForColumn:@"ID"],
                      [s dateForColumn:@"dateCreated"],
                      [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
@@ -148,7 +145,7 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
 }
 
 - (NSArray *) getAllEventsLimited:(NSUInteger)limit {
-    NSString *query = [NSString stringWithFormat:@"%@ LIMIT %lu", _querySelectAll, (unsigned long)limit];
+    NSString *query = [NSString stringWithFormat:@"%@ LIMIT %@", _querySelectAll, [@(limit) stringValue]];
     return [self getAllEventsWithQuery:query];
 }
 
@@ -161,8 +158,8 @@ static NSString * const _queryDeleteId    = @"DELETE FROM 'events' WHERE id=?";
                 long long int index = [s longLongIntForColumn:@"ID"];
                 NSData * data =[s dataForColumn:@"eventData"];
                 NSDate * date = [s dateForColumn:@"dateCreated"];
-                SnowplowDLog(@"Item: %lld %@ %@",
-                     index,
+                SnowplowDLog(@"SPLog: Item: %@ %@ %@",
+                     [@(index) stringValue],
                      [date description],
                      [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
                 NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:0];
