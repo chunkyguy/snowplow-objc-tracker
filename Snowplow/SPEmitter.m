@@ -152,6 +152,7 @@ const NSInteger POST_STM_BYTES = 22;
 // Builder Finished
 
 - (void) addPayloadToBuffer:(SPPayload *)spPayload {
+    NSLog(@"---Timestamp: %@", spPayload.getAsDictionary[@"dtm"]);
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [_db insertEvent:spPayload];
         [self flushBuffer];
@@ -260,7 +261,7 @@ const NSInteger POST_STM_BYTES = 22;
         for (NSDictionary * eventWithMetaData in listValues) {
             NSArray *indexArray = [NSArray arrayWithObject:[eventWithMetaData objectForKey:@"ID"]];
             NSMutableDictionary *eventPayload = [[eventWithMetaData objectForKey:@"eventData"] mutableCopy];
-            [eventPayload setValue:[NSString stringWithFormat:@"%@", [@([SPUtilities getTimestamp]) stringValue]] forKey:kSPSentTimestamp];
+            [eventPayload setValue:[NSString stringWithFormat:@"%lld", [[SPUtilities getTimestamp] longLongValue]] forKey:kSPSentTimestamp];
             
             // Make GET URL to send
             NSString *url = [NSString stringWithFormat:@"%@?%@", [_urlEndpoint absoluteString], [SPUtilities urlEncodeDictionary:eventPayload]];
@@ -360,9 +361,9 @@ const NSInteger POST_STM_BYTES = 22;
 }
 
 - (void) addStmToEventPayloadsWithArray:(NSArray *)eventArray {
-    NSInteger stm = [SPUtilities getTimestamp];
+    NSNumber *stm = [SPUtilities getTimestamp];
     for (NSMutableDictionary * event in eventArray) {
-        [event setValue:[NSString stringWithFormat:@"%@", [@(stm) stringValue]] forKey:kSPSentTimestamp];
+        [event setValue:[NSString stringWithFormat:@"%lld", stm.longLongValue] forKey:kSPSentTimestamp];
     }
 }
 
